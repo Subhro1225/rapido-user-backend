@@ -1,0 +1,75 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * user/register.php
+ * POST — register a new user.
+ *
+ * Required POST fields: name, mobile, password
+ * Optional POST fields: email
+ */
+
+session_start();
+header('Content-Type: application/json');
+
+require_once __DIR__ . '/../config/db.php';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
+    exit;
+}
+
+$name     = trim((string)($_POST['name']     ?? ''));
+$mobile   = trim((string)($_POST['mobile']   ?? ''));
+$password = (string)($_POST['password']      ?? '');
+$email    = trim((string)($_POST['email']    ?? '')) ?: null;
+
+$errors = [];
+
+if (strlen($name) < 2) {
+    $errors[] = 'name must be at least 2 characters.';
+}
+if (!preg_match('/^\+?[0-9]{7,15}$/', $mobile)) {
+    $errors[] = 'mobile must be a valid phone number.';
+}
+if (strlen($password) < 8) {
+    $errors[] = 'password must be at least 8 characters.';
+}
+if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors[] = 'email is invalid.';
+}
+
+if ($errors !== []) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'errors' => $errors]);
+    exit;
+}
+
+try {
+    $pdo  = Database::getInstance()->getConnection();
+
+    // Check for duplicate mobile
+    $chk = $pdo->prepare('SELECT id FROM users WHERE mobile = :mobile LIMIT 1');
+    $chk->execute([':mobile' => $mobile]);
+    if ($chk->fetch()) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => 'Mobile already registered.']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (name, mobile, email, password_hash) VALUES (:name, :mobile, :email, :hash)'
+    );
+    $stmt->execute([
+        ':name'   => $name,
+        ':mobile' => $mobile,
+        ':email'  => $email,
+        ':hash'   => password_hash($password, PASSWORD_BCRYPT),
+    ]);
+
+    echo json_encode(['success' => true, 'user_id' => (int) $pdo->lastInsertId()]);
+} catch (Throwable) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Registration failed.']);
+}

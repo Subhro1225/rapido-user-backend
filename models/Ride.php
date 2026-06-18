@@ -105,7 +105,11 @@ class Ride
      */
     public function getRideById(int $rideId): ?array
     {
-        $stmt = $this->db->prepare('SELECT * FROM rides WHERE id = :id LIMIT 1');
+        $stmt = $this->db->prepare(
+            'SELECT id, user_id, driver_id, pickup_location, destination,
+                    distance_km, fare, otp, ride_status, payment_status, created_at
+             FROM rides WHERE id = :id LIMIT 1'
+        );
         $stmt->execute([':id' => $rideId]);
         $row = $stmt->fetch();
         return $row !== false ? $row : null;
@@ -120,7 +124,9 @@ class Ride
     public function getRidesByUser(int $userId): array
     {
         $stmt = $this->db->prepare(
-            'SELECT * FROM rides WHERE user_id = :uid ORDER BY created_at DESC LIMIT ' . self::LIST_LIMIT
+            'SELECT id, user_id, driver_id, pickup_location, destination,
+                    distance_km, fare, ride_status, payment_status, created_at
+             FROM rides WHERE user_id = :uid ORDER BY created_at DESC LIMIT ' . self::LIST_LIMIT
         );
         $stmt->execute([':uid' => $userId]);
         return $stmt->fetchAll();

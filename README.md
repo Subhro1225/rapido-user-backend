@@ -18,5 +18,5 @@ To help the team understand and work on the project, please refer to the followi
 ## Current Progress
 * [x] **Phase 1**: Database Schema (Users, Drivers, Rides, Payments)
 * [x] **Phase 2**: Database Connection (Singleton PDO, Universal env configuration)
-* [ ] **Phase 3**: Ride Model implementation
-* [ ] **Phase 4**: Booking Endpoint
+* [x] **Phase 3**: Ride Model implementation
+* [x] **Phase 4**: Booking Endpoint
