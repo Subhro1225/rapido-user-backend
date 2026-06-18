@@ -2,17 +2,14 @@
 declare(strict_types=1);
 
 /**
- * user/pay_ride.php
- * POST endpoint — records payment for a completed ride.
+ * user/complete_ride.php
+ * POST endpoint — lets the user mark a ride as 'completed'.
  *
- * Required POST fields: ride_id
- * Optional POST field:  payment_method (default: 'cash')
+ * Purpose: temporary stand-in for the driver module during development.
+ * A ride must be in 'started' status before it can be completed.
+ *
+ * Required POST field: ride_id
  * Requires active session with user_id set.
- *
- * Guard Rails:
- *   • Double-payment  → "Payment already recorded."
- *   • Pre-completion  → "Ride is not yet completed."
- *   • Transaction wraps INSERT + markPaid — rolls back on failure.
  */
 
 session_start();
@@ -50,16 +47,6 @@ if ($rideId === false || $rideId === null) {
     exit;
 }
 
-$paymentMethod = trim(strip_tags((string)($_POST['payment_method'] ?? 'cash')));
-if ($paymentMethod === '') {
-    $paymentMethod = 'cash';
-}
-if (strlen($paymentMethod) > 50) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'payment_method too long (max 50 chars).']);
-    exit;
-}
-
 // ── Fetch ride ────────────────────────────────────────────────────────────────
 
 try {
@@ -86,58 +73,31 @@ if ((int) $row['user_id'] !== $sessionUserId) {
     exit;
 }
 
-// ── Completion guard ──────────────────────────────────────────────────────────
+// ── Status guard ──────────────────────────────────────────────────────────────
+// Only a ride in 'started' state can be moved to 'completed'.
 
-if ($row['ride_status'] !== 'completed') {
+if ($row['ride_status'] !== 'started') {
     http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Ride is not yet completed.']);
+    echo json_encode([
+        'success' => false,
+        'message' => "Cannot complete a ride with status '{$row['ride_status']}'. Ride must be 'started'.",
+    ]);
     exit;
 }
 
-// ── Double-payment guard ──────────────────────────────────────────────────────
-
-if ($row['payment_status'] === 'paid') {
-    http_response_code(409);
-    echo json_encode(['success' => false, 'message' => 'Payment already recorded.']);
-    exit;
-}
-
-$amount = (float) $row['fare'];
-
-// ── Transaction ───────────────────────────────────────────────────────────────
+// ── Update status ─────────────────────────────────────────────────────────────
 
 try {
-    $pdo->beginTransaction();
-
-    $stmt = $pdo->prepare(
-        'INSERT INTO payments (ride_id, user_id, amount, payment_method)
-         VALUES (:ride_id, :user_id, :amount, :method)'
-    );
-    $stmt->execute([
-        ':ride_id' => $rideId,
-        ':user_id' => $sessionUserId,
-        ':amount'  => $amount,
-        ':method'  => $paymentMethod,
-    ]);
-    $paymentId = (int) $pdo->lastInsertId();
-
-    $ride->markPaid($rideId);
-
-    $pdo->commit();
+    $ride->updateStatus($rideId, 'completed');
 } catch (Throwable) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Payment could not be recorded.']);
+    echo json_encode(['success' => false, 'message' => 'Could not update ride status.']);
     exit;
 }
 
 // ── Response ──────────────────────────────────────────────────────────────────
 
 echo json_encode([
-    'success'    => true,
-    'message'    => 'Payment recorded.',
-    'amount'     => $amount,
-    'payment_id' => $paymentId,
+    'success' => true,
+    'message' => 'Ride marked complete.',
 ]);
